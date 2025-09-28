@@ -1,44 +1,93 @@
 #include <assert.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-typedef struct node node;
-typedef struct task task;
 
-const char LIST_DATA_FILENAME[] = "task-data.dat";
-const char LAST_USED_ID_FILE[] = "last-used-id.txt";
+#include "todo.h"  // Shared header
 
-struct task {
-    int task_id;
-    char task_name[40];
-    char task_desc[100];
-    bool task_status;
-};
+// Forward declaration for read_list_data (used in load_data)
+struct node *read_list_data(const char *filename);
 
-struct node {
-    struct task task_data;
-    struct node *next;
-};
+void save_data(const char filename[], struct node *head, int last_used_id) {
+    assert(filename != NULL);
 
-struct node *head = NULL; // head node of the lists
-static int last_used_id = 1;
+    // Save the last_used_id first in a last-used-id.txt file
+    FILE *file = fopen(LAST_USED_ID_FILE, "w");
+    if (file == NULL) {
+        printf("❌ Error: Could not create/open %s for writing!\n", LAST_USED_ID_FILE);
+        printf("💡 Make sure you have write permissions in this directory.\n");
+        exit(EXIT_FAILURE);
+    }
+    fprintf(file, "%d\n", last_used_id);
+    fclose(file);
+    printf("📝 ID counter saved: %d\n", last_used_id);
 
-void save_data(const char filename[], struct node *head, int last_used_id);
-void load_data(const char filename[], struct node **head_ref, int *last_used_id_ref);
+    // Now save the linked list data (only task_data, not pointers)
+    file = fopen(LIST_DATA_FILENAME, "wb");
+    if (file == NULL) {
+        printf("❌ Error: Could not create/open %s for writing!\n", LIST_DATA_FILENAME);
+        printf("💡 Make sure you have write permissions in this directory.\n");
+        exit(EXIT_FAILURE);
+    }
 
-int count_tasks();
+    int tasks_saved = 0;
+    struct node *current = head;
+    while (current != NULL) {
+        size_t written = fwrite(&current->task_data, sizeof(struct task), 1, file);
+        if (written != 1) {
+            printf("❌ Error: Failed to write task data to file!\n");
+            fclose(file);
+            exit(EXIT_FAILURE);
+        }
+        tasks_saved++;
+        current = current->next;
+    }
 
-int main() {
+    fclose(file);
+    printf("💾 Tasks saved: %d task(s) written to %s\n", tasks_saved, LIST_DATA_FILENAME);
+}
 
-    return 0;
+void load_data(const char filename[], struct node **head_ref, int *last_used_id_ref) {
+    assert(head_ref != NULL);
+    assert(last_used_id_ref != NULL);
+    
+    // Load last_used_id
+    FILE *id_file = fopen(LAST_USED_ID_FILE, "r");
+    if (id_file != NULL) {
+        if (fscanf(id_file, "%d", last_used_id_ref) != 1) {
+            *last_used_id_ref = 0;  // Default if read fails
+            printf("⚠️  Warning: Could not read ID counter, starting from 0\n");
+        } else {
+            printf("🔄 Loaded ID counter: %d\n", *last_used_id_ref);
+        }
+        fclose(id_file);
+    } else {
+        *last_used_id_ref = 0;  // Default if file doesn't exist
+        printf("🆕 No previous ID counter found, starting from 0\n");
+    }
+
+    // Load the list data
+    *head_ref = read_list_data(LIST_DATA_FILENAME);
+    
+    // Provide user feedback about loaded data
+    if (*head_ref != NULL) {
+        int loaded_tasks = 0;
+        struct node *current = *head_ref;
+        while (current != NULL) {
+            loaded_tasks++;
+            current = current->next;
+        }
+        printf("📋 Loaded %d task(s) from %s\n", loaded_tasks, LIST_DATA_FILENAME);
+    } else {
+        printf("🌟 No previous tasks found, starting with empty list\n");
+    }
 }
 
 int count_tasks()
 {
-    if(head == NULL) return 0;
+    if (head == NULL) return 0;
 
-    node *curr = head;
+    struct node *curr = head;  // Fixed: Added 'struct' keyword
     int count = 0;
     while (curr != NULL)
     {
@@ -48,56 +97,32 @@ int count_tasks()
     return count;
 }
 
-void save_data(const char filename[], struct node *head, int last_used_id) {
-    assert(filename != NULL); // (1)
-
-    // save the last_used_id first in a last-used-id.txt file
-    FILE *file = NULL;
-    file = fopen(LAST_USED_ID_FILE, "w");
-    if(file == NULL) {
-        perror("Error opening file");
-        exit(EXIT_FAILURE);
-    }
-
-    fprintf(file, "%d\n", last_used_id); // write last_used_id in file
-    fclose(file);
-
-
-    // now save the linked list data
-    file = fopen(LIST_DATA_FILENAME, "wb");
-    if (file == NULL) {
-        perror("Error opening file");
-        exit(EXIT_FAILURE);
-    }
-
-    while(head != NULL) {
-        fwrite(head, sizeof(node), 1, file);
-        head = head->next;
-    }
-
-    fclose(file);
-}
-
 // function to read the linked list data from the file
 struct node *read_list_data(const char *filename) {
+    assert(filename != NULL);
+    
     FILE *file = fopen(filename, "rb");
     if (file == NULL) {
-        perror("Error opening file");
-        exit(EXIT_FAILURE);
+        // No file yet, return empty list (don't exit)
+        return NULL;
     }
 
     struct node *head = NULL;
     struct node *current = NULL;
-    struct node temp;
+    struct task temp_task;  // Read into task struct (fixed to match save)
+    int tasks_read = 0;
 
-    while (fread(&temp, sizeof(struct node), 1, file) == 1) {
+    while (fread(&temp_task, sizeof(struct task), 1, file) == 1) {
         struct node *new_node = malloc(sizeof(struct node));
         if (new_node == NULL) {
-            perror("Memory allocation failed");
+            printf("❌ Memory allocation failed while loading tasks!\n");
+            fclose(file);
             exit(EXIT_FAILURE);
         }
-        new_node->task_data = temp.task_data;
+        
+        new_node->task_data = temp_task;
         new_node->next = NULL;
+        tasks_read++;
 
         if (head == NULL) {
             head = new_node;
@@ -109,5 +134,10 @@ struct node *read_list_data(const char *filename) {
     }
 
     fclose(file);
+    
+    if (tasks_read > 0) {
+        printf("✅ Successfully loaded %d task(s) from storage\n", tasks_read);
+    }
+    
     return head;
 }
