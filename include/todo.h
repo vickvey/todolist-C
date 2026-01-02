@@ -3,7 +3,6 @@
 
 #include <stdbool.h>
 
-// File configuration constants
 #define LIST_DATA_FILENAME "task-data.dat"
 #define LAST_USED_ID_FILE "last-used-id.txt"
 
@@ -11,15 +10,6 @@
 typedef struct task task;
 typedef struct node node;
 
-/**
- * Task structure - holds all information about a single task
- * 
- * Fields:
- * - task_id: Unique identifier for the task
- * - task_name: Short name/title for the task (max 39 chars + null terminator)
- * - task_desc: Detailed description (max 99 chars + null terminator)
- * - task_status: Boolean flag - true for completed, false for pending
- */
 struct task {
     int task_id;
     char task_name[40];
@@ -27,13 +17,6 @@ struct task {
     bool task_status;
 };
 
-/**
- * Node structure - represents a single element in the linked list
- * 
- * Fields:
- * - task_data: The actual task information stored in this node
- * - next: Pointer to the next node in the list (NULL for last node)
- */
 struct node {
     struct task task_data;
     struct node *next;
